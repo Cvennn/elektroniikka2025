@@ -1,14 +1,12 @@
 /*
-ISP ohjelmointirajapinta
-Arduino UNO     Atmega328P 3.3V 8MHz ulkoinen kide
+ISP ohjelmointirajapinta / programming pins
+Arduino UNO     Atmega328P 3.3V 8MHz ulkoinen kide / external crystal
 10              1         RESET
-11              17        MOSI 5V -> 3.3V jännitejako
+11              17        MOSI 5V -> 3.3V Voltage division
 12              18        MISO
-13              19        SCK  5V -> 3.3V jännitejako
+13              19        SCK  5V -> 3.3V 
 
 */
-
-//Atmgega328p nukkumis tilaan laittaminen
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 #include <math.h>
@@ -21,39 +19,38 @@ Adafruit_BMP280 bmp;
 Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
 Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
 
-// LCD-pinnit ja LCD alustaminen
+// LCD-pins and LCD setup
 const int rs = 7, en = 6, d4 = 14, d5 = 15, d6 = 16, d7 = 17;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
-uint8_t nappi_painettu = 0;
+uint8_t deviceMode = 0;
 unsigned long deBounceDelay = 100;
 unsigned long deBounceLast = 0;
 
 float measurement1, measurement2 = 0;
 
 void setup() {
-  nappi_painettu = 0;
-// Nappipinnit PD2 ja PD3 (INT0 ja INT1) input-pullup
+  deviceMode = 0;
+//Pins PD2 and PD3 (INT0 and INT1) set to input-pullup
   DDRD &= ~(1 << PD2) & ~(1 << PD3);
   PORTD |= (1 << PD2) | (1 << PD3);
 
-// Asetetaan keskeytykset laskevaan reunaan INT0 ja INT1
+//Enable interrupts on descending edge for INT0 and INT1
   EICRA |= (1 << ISC01) | (1 << ISC11);
   EICRA &= ~((1 << ISC00) | (1 << ISC10));
 
-// Otetaan keskeytykset käyttöön
+//Enable microcontroller interrupts
   EIMSK |= (1 << INT0) | (1 << INT1);
 
-//LCD näyttö 16 kirjainta, 2 riviä
   lcd.begin(16, 2);
 
   unsigned status;
   status = bmp.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
-  if (!status) { // Varmista oikea osoite: 0x76 tai 0x77
+  if (!status) { //Check address: 0x76 or 0x77
     lcd.print("BMP280 fail");
     while (1) delay(10);
   }
-//BMP280 asetukset
+//BMP280 settings
   bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
                   Adafruit_BMP280::SAMPLING_X2,
                   Adafruit_BMP280::SAMPLING_X16,
@@ -65,6 +62,7 @@ void setup() {
   delay(1000);
 }
 
+//BMP280 normal mode
 void normalMode() {
   bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
                   Adafruit_BMP280::SAMPLING_X2,
@@ -82,12 +80,12 @@ void sleepMode(){
                   Adafruit_BMP280::STANDBY_MS_1);
 }
 
-//Atmega328 sleep tilaan
+//Atmega328 sleep mode
 void sleepMode328() {
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN); 
-  cli();      //estää interruptit  
-  sleep_enable();     
-  sei();      //laittaa interruptit takaisin päälle
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  cli();
+  sleep_enable();
+  sei();
   sleep_cpu();
   sleep_disable();
 }
@@ -99,42 +97,42 @@ void loop() {
   bmp_temp->getEvent(&temp_event);
   bmp_pressure->getEvent(&pressure_event);
 
-  if (nappi_painettu == 1) {
+  if (deviceMode == 1) {
     normalMode();
     float tempC = bmp.readTemperature();
     char buffer[10];
 
     lcd.clear();
-    lcd.print("Lampotila:");
+    lcd.print("Tempearature:");
     lcd.setCursor(0, 1);
     dtostrf(tempC, 5, 1, buffer);
     lcd.print(buffer);
-    lcd.write(223); // aste-symboli
+    lcd.write(223); //Symbol for degree
     lcd.print("C");
   }
 
-  if (nappi_painettu == 2) {
+  if (deviceMode == 2) {
     normalMode();
     float pHa = bmp.readPressure();
     char buffer2[10];
 
     lcd.clear();
-    lcd.print("Ilmanpaine:");
+    lcd.print("Pressure:");
     lcd.setCursor(0, 1);
     dtostrf(pHa, 5, 1, buffer2);
     lcd.print(buffer2);
     lcd.print(" pHa");
   }
-  
-  if (nappi_painettu == 3){
+  //Activate sleep mode on microcontroller and sensor
+  if (deviceMode == 3){
     lcd.clear();
     sleepMode();
     sleepMode328();
   }
 
-  if (nappi_painettu >= 4 && nappi_painettu != 6){
+  if (deviceMode >= 4 && deviceMode != 6){
     normalMode();
-    if (nappi_painettu == 5){
+    if (deviceMode == 5){
       //Take final measurement after button press and return the result in altitude differnece
       float height = 0;
       char buffer3[10];
@@ -143,8 +141,8 @@ void loop() {
       lcd.setCursor(0, 0);
       lcd.print("Height: ");
 
-      //calculate heigth from measured air pressure
-      // Divide by 100 to get hPa
+      //Calculate heigth from measured air pressure
+      //Divide by 100 to get hPa
       measurement1 /= 100;
       measurement2 /= 100;
       //Calculate height in meters from measurements
@@ -156,7 +154,8 @@ void loop() {
       lcd.setCursor(0, 1);
       lcd.print(buffer3);
       lcd.print("m");
-      nappi_painettu = 6;
+
+      deviceMode = 6;
       measurement1 = NULL;
       measurement2 = NULL;
 
@@ -179,15 +178,15 @@ void loop() {
   delay(100);
 }
 
-// Keskeytysrutiinit napeille + debounce
+//Button interrupt routine with debounce
 ISR(INT0_vect) {
   unsigned long now = millis();
   if ((now - deBounceLast) > deBounceDelay) {
     deBounceLast = now;
-    if (nappi_painettu >= 3) {
-      nappi_painettu = 0;
+    if (deviceMode >= 3) {
+      deviceMode = 0;
     }
-    nappi_painettu = nappi_painettu + 1;
+    deviceMode = deviceMode + 1;
   }
 }
 
@@ -196,10 +195,10 @@ ISR(INT1_vect) {
   unsigned long now = millis();
   if ((now - deBounceLast) > deBounceDelay) {
     deBounceLast = now;
-    if (nappi_painettu == 4){
-      nappi_painettu = 5;
+    if (deviceMode == 4){
+      deviceMode = 5;
     } else {
-    nappi_painettu = 4;
+    deviceMode = 4;
     }
     
   }
